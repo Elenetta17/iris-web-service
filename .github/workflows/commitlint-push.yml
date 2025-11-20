@@ -1,0 +1,25 @@
+name: Commit Message Lint on Push
+
+on:
+  push:
+
+jobs:
+  commitlint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Fetch all history to lint the pushed commits properly
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install commitlint
+        run: npm install @commitlint/cli @commitlint/config-conventional
+
+      - name: Run commitlint on pushed commits
+        run: npx commitlint --from ${{ github.sha }}~1 --to ${{ github.sha }} --verbose
