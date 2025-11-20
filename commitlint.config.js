@@ -1,22 +1,39 @@
 // commitlint.config.js
 module.exports = {
-  extends: ['@commitlint/config-conventional'], // Use conventional config as base
+  parserPreset: {
+    parserOpts: {
+      // Standard conventional commit header pattern: type(scope?): subject
+      headerPattern: /^(\w*)(?:\((.*)\))?: (.*)$/,
+      headerCorrespondence: ['type', 'scope', 'subject'],
+    },
+  },
+  extends: ['@commitlint/config-conventional'],
   rules: {
-    // Enforce commit message type (e.g. feat, fix, etc.)
     'type-enum': [
       2,
       'always',
-      ['feat', 'fix', 'docs', 'test', 'chore', 'refactor', 'perf']
+      ['feat', 'fix', 'docs', 'test', 'chore', 'refactor', 'perf'],
     ],
-
-    // Enforce commit message header length
     'header-max-length': [2, 'always', 72],
-
-    // Custom rule: ensure the commit message includes an 'Author:' line
-    'body-pattern': [
-      2,
-      'always',
-      /^(?=.*\bAuthor: .+ <.+@.+>\b)(?=.*\bTesting:\b).+/m
-    ],
+    'body-empty': [2, 'never'],
+    'body-min-length': [2, 'always', 20],
   },
-}
+  plugins: [
+    {
+      rules: {
+        'body-contains-author-and-testing': (parsed, when, value) => {
+          const body = parsed.body || '';
+          const hasAuthor = /Author: .+ <.+@.+>/.test(body);
+          const hasTesting = /Testing:/.test(body);
+          if (!hasAuthor || !hasTesting) {
+            return [false, "Body must include 'Author: name <email>' and 'Testing:' sections"];
+          }
+          return [true, ''];
+        },
+      },
+    },
+  ],
+  rules: {
+    'body-contains-author-and-testing': [2, 'always'],
+  },
+};
