@@ -8,9 +8,10 @@ import (
 )
 
 func main() {
-	http.HandleFunc("/", httpapi.HelloHandler)
+	http.HandleFunc("/", httpapi.FormPage)
+	http.HandleFunc("/hello", httpapi.HelloHandler)
 
-	log.Println("Server running on http://localhost:8080")
+	log.Println("Server running at http://localhost:8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
