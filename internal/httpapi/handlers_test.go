@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,102 +9,152 @@ import (
 	"testing"
 )
 
-// errReadCloser is a small helper to simulate a read error from the request body.
-type errReadCloser struct{}
+func runHelloRequest(t *testing.T, method string, form url.Values, contentType string) *httptest.ResponseRecorder {
+	t.Helper()
 
-func (errReadCloser) Read(p []byte) (int, error) { return 0, errors.New("read error") }
-func (errReadCloser) Close() error               { return nil }
-
-func TestHelloHandler(t *testing.T) {
-	tests := []struct {
-		name         string
-		method       string
-		form         url.Values      // form values to send (nil -> no body)
-		body         io.ReadCloser   // optional custom body (overrides form)
-		contentType  string
-		wantCode     int
-		wantBody     string
-		wantCTPrefix string // optional: check response Content-Type starts with this
-	}{
-		{
-			name:     "wrong method",
-			method:   http.MethodGet,
-			wantCode: http.StatusMethodNotAllowed,
-		},
-		{
-			name:     "default name",
-			method:   http.MethodPost,
-			form:     url.Values{},
-			contentType: "application/x-www-form-urlencoded",
-			wantCode: http.StatusOK,
-			wantBody: "Hello World!",
-			wantCTPrefix: "text/plain",
-		},
-		{
-			name:     "with name",
-			method:   http.MethodPost,
-			form:     url.Values{"name": {"Alice"}},
-			contentType: "application/x-www-form-urlencoded",
-			wantCode: http.StatusOK,
-			wantBody: "Hello Alice!",
-			wantCTPrefix: "text/plain",
-		},
-		{
-			name:    "parse form error",
-			method:  http.MethodPost,
-			// supply a body that returns error when read to force r.ParseForm() to fail
-			body:        errReadCloser{},
-			contentType: "application/x-www-form-urlencoded",
-			wantCode:    http.StatusBadRequest,
-			wantBody:    "Invalid form\n", // http.Error appends newline
-		},
+	var body io.Reader
+	if form != nil {
+		body = strings.NewReader(form.Encode())
 	}
 
-	for _, tt := range tests {
-		tt := tt // capture range variable for running tests in parallel if desired
-		t.Run(tt.name, func(t *testing.T) {
-			// t.Parallel() // uncomment if tests are safe to run in parallel
+	req, err := http.NewRequest(method, "/hello", body)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
 
-			var reqBody io.ReadCloser
-			if tt.body != nil {
-				reqBody = tt.body
-			} else if tt.form != nil {
-				reqBody = io.NopCloser(strings.NewReader(tt.form.Encode()))
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+
+	rr := httptest.NewRecorder()
+	http.HandlerFunc(HelloHandler).ServeHTTP(rr, req)
+	return rr
+}
+
+func TestFormPage(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rr := httptest.NewRecorder()
+
+	http.HandlerFunc(FormPage).ServeHTTP(rr, req)
+
+	if got, want := rr.Code, http.StatusOK; got != want {
+		t.Fatalf("status = %d, want %d", got, want)
+	}
+
+	if got, want := rr.Header().Get("Content-Type"), "text/html"; got != want {
+		t.Fatalf("content-type = %q, want %q", got, want)
+	}
+
+	body := rr.Body.String()
+	for _, element := range []string{
+		`<form`,
+		`action="/hello"`,
+		`method="POST"`,
+		`<input`,
+		`name="name"`,
+		`<button`,
+		`type="submit"`,
+	} {
+		if !strings.Contains(body, element) {
+			t.Errorf("response body missing required element: %q", element)
+		}
+	}
+}
+
+func TestHelloHandler_Success(t *testing.T) {
+	form := url.Values{"name": {"Alice"}}
+	rr := runHelloRequest(t, http.MethodPost, form, "application/x-www-form-urlencoded")
+
+	if got, want := rr.Code, http.StatusOK; got != want {
+		t.Fatalf("status = %d, want %d", got, want)
+	}
+
+	if got, want := rr.Header().Get("Content-Type"), "text/plain"; got != want {
+		t.Fatalf("content-type = %q, want %q", got, want)
+	}
+
+	if got, want := rr.Body.String(), "Hello Alice!"; got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+}
+
+func TestHelloHandler_DefaultWorld(t *testing.T) {
+	tests := []struct {
+		name string
+		form url.Values
+	}{
+		{"empty name", url.Values{"name": {""}}},
+		{"no name", url.Values{}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rr := runHelloRequest(t, http.MethodPost, tc.form, "application/x-www-form-urlencoded")
+
+			if got, want := rr.Code, http.StatusOK; got != want {
+				t.Fatalf("status = %d, want %d", got, want)
 			}
 
-			req := httptest.NewRequest(tt.method, "/hello", reqBody)
-			if tt.contentType != "" {
-				req.Header.Set("Content-Type", tt.contentType)
+			if got, want := rr.Body.String(), "Hello World!"; got != want {
+				t.Errorf("body = %q, want %q", got, want)
 			}
+		})
+	}
+}
 
-			// Use ResponseRecorder to capture the handler's response
-			rr := httptest.NewRecorder()
-			HelloHandler(rr, req)
+func TestHelloHandler_MethodNotAllowed(t *testing.T) {
+	for _, method := range []string{
+		http.MethodGet,
+		http.MethodPut,
+		http.MethodDelete,
+		http.MethodPatch,
+	} {
+		t.Run(method, func(t *testing.T) {
+			rr := runHelloRequest(t, method, nil, "")
 
-			res := rr.Result()
-			defer res.Body.Close()
-
-			if res.StatusCode != tt.wantCode {
-				t.Fatalf("status: want %d, got %d", tt.wantCode, res.StatusCode)
+			if got, want := rr.Code, http.StatusMethodNotAllowed; got != want {
+				t.Fatalf("status = %d, want %d", got, want)
 			}
-
-			if tt.wantCTPrefix != "" {
-				ct := res.Header.Get("Content-Type")
-				if !strings.HasPrefix(ct, tt.wantCTPrefix) {
-					t.Fatalf("Content-Type: want prefix %q, got %q", tt.wantCTPrefix, ct)
-				}
+			if !strings.Contains(rr.Body.String(), "Method not allowed") {
+				t.Errorf("body %q does not contain %q", rr.Body.String(), "Method not allowed")
 			}
+		})
+	}
+}
 
-			// Read body if we expect one (empty wantBody means we don't check)
-			if tt.wantBody != "" {
-				b, err := io.ReadAll(res.Body)
-				if err != nil {
-					t.Fatalf("reading body: %v", err)
-				}
-				got := string(b)
-				if got != tt.wantBody {
-					t.Fatalf("body: want %q, got %q", tt.wantBody, got)
-				}
+func TestHelloHandler_InvalidForm(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/hello", strings.NewReader("invalid"))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=")
+
+	rr := httptest.NewRecorder()
+	http.HandlerFunc(HelloHandler).ServeHTTP(rr, req)
+
+	if got, want := rr.Code, http.StatusBadRequest; got != want {
+		t.Fatalf("status = %d, want %d", got, want)
+	}
+	if !strings.Contains(rr.Body.String(), "Invalid form") {
+		t.Errorf("body %q does not contain %q", rr.Body.String(), "Invalid form")
+	}
+}
+
+func TestHelloHandler_SpecialCharacters(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"spaces", "John Doe", "Hello John Doe!"},
+		{"unicode", "José", "Hello José!"},
+		{"numbers", "User123", "Hello User123!"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			form := url.Values{"name": {tc.input}}
+			rr := runHelloRequest(t, http.MethodPost, form, "application/x-www-form-urlencoded")
+
+			if got := rr.Body.String(); got != tc.expected {
+				t.Errorf("body = %q, want %q", got, tc.expected)
 			}
 		})
 	}
