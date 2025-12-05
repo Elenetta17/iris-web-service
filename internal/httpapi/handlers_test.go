@@ -11,21 +11,17 @@ import (
 
 func runHelloRequest(t *testing.T, method string, form url.Values, contentType string) *httptest.ResponseRecorder {
 	t.Helper()
-
 	var body io.Reader
 	if form != nil {
 		body = strings.NewReader(form.Encode())
 	}
-
 	req, err := http.NewRequest(method, "/hello", body)
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
 	}
-
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
-
 	rr := httptest.NewRecorder()
 	http.HandlerFunc(HelloHandler).ServeHTTP(rr, req)
 	return rr
@@ -34,15 +30,15 @@ func runHelloRequest(t *testing.T, method string, form url.Values, contentType s
 func TestFormPage(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rr := httptest.NewRecorder()
-
 	http.HandlerFunc(FormPage).ServeHTTP(rr, req)
 
 	if got, want := rr.Code, http.StatusOK; got != want {
 		t.Fatalf("status = %d, want %d", got, want)
 	}
 
-	if got, want := rr.Header().Get("Content-Type"), "text/html"; got != want {
-		t.Fatalf("content-type = %q, want %q", got, want)
+	// Changed: template sets "text/html; charset=utf-8"
+	if got := rr.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+		t.Fatalf("content-type = %q, want text/html", got)
 	}
 
 	body := rr.Body.String()
@@ -69,12 +65,15 @@ func TestHelloHandler_Success(t *testing.T) {
 		t.Fatalf("status = %d, want %d", got, want)
 	}
 
-	if got, want := rr.Header().Get("Content-Type"), "text/plain"; got != want {
-		t.Fatalf("content-type = %q, want %q", got, want)
+	// Changed: now returns HTML, not plain text
+	if got := rr.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+		t.Fatalf("content-type = %q, want text/html", got)
 	}
 
-	if got, want := rr.Body.String(), "Hello Alice!"; got != want {
-		t.Errorf("body = %q, want %q", got, want)
+	// Changed: check for HTML content
+	body := rr.Body.String()
+	if !strings.Contains(body, "Hello Alice!") {
+		t.Errorf("body %q does not contain %q", body, "Hello Alice!")
 	}
 }
 
@@ -95,8 +94,10 @@ func TestHelloHandler_DefaultWorld(t *testing.T) {
 				t.Fatalf("status = %d, want %d", got, want)
 			}
 
-			if got, want := rr.Body.String(), "Hello World!"; got != want {
-				t.Errorf("body = %q, want %q", got, want)
+			// Changed: check HTML contains the text
+			body := rr.Body.String()
+			if !strings.Contains(body, "Hello World!") {
+				t.Errorf("body %q does not contain %q", body, "Hello World!")
 			}
 		})
 	}
@@ -115,6 +116,7 @@ func TestHelloHandler_MethodNotAllowed(t *testing.T) {
 			if got, want := rr.Code, http.StatusMethodNotAllowed; got != want {
 				t.Fatalf("status = %d, want %d", got, want)
 			}
+
 			if !strings.Contains(rr.Body.String(), "Method not allowed") {
 				t.Errorf("body %q does not contain %q", rr.Body.String(), "Method not allowed")
 			}
@@ -132,6 +134,7 @@ func TestHelloHandler_InvalidForm(t *testing.T) {
 	if got, want := rr.Code, http.StatusBadRequest; got != want {
 		t.Fatalf("status = %d, want %d", got, want)
 	}
+
 	if !strings.Contains(rr.Body.String(), "Invalid form") {
 		t.Errorf("body %q does not contain %q", rr.Body.String(), "Invalid form")
 	}
@@ -153,10 +156,33 @@ func TestHelloHandler_SpecialCharacters(t *testing.T) {
 			form := url.Values{"name": {tc.input}}
 			rr := runHelloRequest(t, http.MethodPost, form, "application/x-www-form-urlencoded")
 
-			if got := rr.Body.String(); got != tc.expected {
-				t.Errorf("body = %q, want %q", got, tc.expected)
+			// Changed: check HTML contains the expected text
+			body := rr.Body.String()
+			if !strings.Contains(body, tc.expected) {
+				t.Errorf("body %q does not contain %q", body, tc.expected)
 			}
 		})
 	}
 }
 
+// New test: XSS protection
+func TestHelloHandler_XSSProtection(t *testing.T) {
+	form := url.Values{"name": {"<script>alert('xss')</script>"}}
+	rr := runHelloRequest(t, http.MethodPost, form, "application/x-www-form-urlencoded")
+
+	if got, want := rr.Code, http.StatusOK; got != want {
+		t.Fatalf("status = %d, want %d", got, want)
+	}
+
+	body := rr.Body.String()
+
+	// Should NOT contain the raw script tag
+	if strings.Contains(body, "<script>alert('xss')</script>") {
+		t.Error("body contains unescaped script tag - XSS vulnerability!")
+	}
+
+	// Should contain escaped version
+	if !strings.Contains(body, "&lt;script&gt;") {
+		t.Error("body does not contain escaped script tag")
+	}
+}

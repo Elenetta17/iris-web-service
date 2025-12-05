@@ -8,11 +8,13 @@ import (
 )
 
 func main() {
-	http.HandleFunc("/", httpapi.FormPage)
-	http.HandleFunc("/hello", httpapi.HelloHandler)
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /{$}", httpapi.FormPage)        // Only "/" exactly
+	mux.HandleFunc("POST /hello", httpapi.HelloHandler) // POST only
 
 	log.Println("Server running at http://localhost:8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	if err := http.ListenAndServe(":8080", mux); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
 }

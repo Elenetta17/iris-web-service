@@ -1,34 +1,49 @@
 package httpapi
 
 import (
-	"fmt"
+	"embed"
+	"html/template"
+	"log"
 	"net/http"
+	"strings"
 )
 
+//go:embed templates/*.html
+var templateFS embed.FS
+
+var templates = template.Must(template.ParseFS(templateFS, "templates/*.html"))
+
+type HelloData struct {
+	Name string
+}
+
 func FormPage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprint(w, `
-        <form action="/hello" method="POST">
-            <input name="name" placeholder="Your name">
-            <button type="submit">Say Hello</button>
-        </form>
-    `)
+	log.Printf("FormPage called: %s %s", r.Method, r.URL.Path)
+	templates.ExecuteTemplate(w, "form.html", nil)
+	// No error check - if this fails, templates are broken (caught at startup)
 }
 
 func HelloHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("HelloHandler called: %s %s", r.Method, r.URL.Path)
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	err := r.ParseForm()
-	if err != nil {
+
+	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Invalid form", http.StatusBadRequest)
 		return
 	}
-	name := r.PostFormValue("name")
+
+	name := strings.TrimSpace(r.PostFormValue("name"))
 	if name == "" {
 		name = "World"
 	}
-	w.Header().Set("Content-Type", "text/plain")
-	fmt.Fprintf(w, "Hello %s!", name)
+
+	data := HelloData{
+		Name: name,
+	}
+
+	templates.ExecuteTemplate(w, "hello.html", data)
 }
