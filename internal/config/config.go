@@ -28,18 +28,11 @@ func Load() (*Config, error) {
 	// Define flags
 	configFile := flag.String("config", "config.yml", "path to config file")
 	port := flag.Int("port", 0, "server port (overrides config file)")
+	shutdownTimeout := flag.Duration("shutdown-timeout", 0, "shutdown timeout (overrides config file)")
 	flag.Parse()
 
-	// Load from file
-	cfg := &Config{
-		Server: ServerConfig{
-			Port:            8080,
-			ReadTimeout:     15 * time.Second,
-			WriteTimeout:    15 * time.Second,
-			IdleTimeout:     60 * time.Second,
-			ShutdownTimeout: 30 * time.Second,
-		},
-	}
+	// Start with defaults
+	cfg := DefaultConfig()
 
 	if *configFile != "" {
 		data, err := os.ReadFile(*configFile)
@@ -58,6 +51,9 @@ func Load() (*Config, error) {
 	// Command-line flags override file values
 	if *port != 0 {
 		cfg.Server.Port = *port
+	}
+	if *shutdownTimeout != 0 {
+		cfg.Server.ShutdownTimeout = *shutdownTimeout
 	}
 
 	return cfg, nil
