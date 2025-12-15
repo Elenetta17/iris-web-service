@@ -1,87 +1,135 @@
 package main
 
 import (
+	"flag"
 	"net/http"
-	"net/http/httptest"
-	"strings"
+	"os"
+	"syscall"
 	"testing"
-
-	"github.com/Elenetta17/iris-web-service/internal/httpapi"
+	"time"
 )
 
-// TestServerRoutes tests that routes are properly registered
-func TestServerRoutes(t *testing.T) {
-	// Create a new ServeMux to simulate main's setup
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", httpapi.FormPage)
-	mux.HandleFunc("POST /hello", httpapi.HelloHandler)
+func TestRunFunctionWithInvalidConfig(t *testing.T) {
+	// Save original state
+	oldArgs := os.Args
+	oldCommandLine := flag.CommandLine
+	defer func() {
+		os.Args = oldArgs
+		flag.CommandLine = oldCommandLine
+	}()
 
-	tests := []struct {
-		name           string
-		method         string
-		path           string
-		body           string
-		contentType    string
-		expectedStatus int
-	}{
-		{
-			name:           "root GET shows form",
-			method:         "GET",
-			path:           "/",
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "POST /hello handles form submission",
-			method:         "POST",
-			path:           "/hello",
-			body:           "name=Test",
-			contentType:    "application/x-www-form-urlencoded",
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "GET /hello returns 405",
-			method:         "GET",
-			path:           "/hello",
-			expectedStatus: http.StatusMethodNotAllowed,
-		},
-		{
-			name:           "POST / returns 405",
-			method:         "POST",
-			path:           "/",
-			expectedStatus: http.StatusMethodNotAllowed,
-		},
-		{
-			name:           "unknown path returns 404",
-			method:         "GET",
-			path:           "/unknown",
-			expectedStatus: http.StatusNotFound,
-		},
+	// Create invalid config file
+	content := `server:
+  port: not-a-number
+`
+	tmpfile, err := os.CreateTemp("", "config-*.yml")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
 	}
+	defer os.Remove(tmpfile.Name())
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var req *http.Request
-			var err error
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("failed to write temp file: %v", err)
+	}
+	tmpfile.Close()
 
-			if tt.body != "" {
-				req, err = http.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
-				if err != nil {
-					t.Fatalf("failed to create request: %v", err)
-				}
-				req.Header.Set("Content-Type", tt.contentType)
-			} else {
-				req, err = http.NewRequest(tt.method, tt.path, nil)
-				if err != nil {
-					t.Fatalf("failed to create request: %v", err)
-				}
-			}
+	// Reset flag.CommandLine
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	os.Args = []string{"cmd", "-config", tmpfile.Name()}
 
-			rr := httptest.NewRecorder()
-			mux.ServeHTTP(rr, req)
+	// Should return error from config parsing
+	err = run()
+	if err == nil {
+		t.Error("run() should return error with invalid config")
+	}
+}
 
-			if rr.Code != tt.expectedStatus {
-				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr.Code)
-			}
-		})
+func TestRunFunctionConfigLoadError(t *testing.T) {
+	// Save original state
+	oldArgs := os.Args
+	oldCommandLine := flag.CommandLine
+	defer func() {
+		os.Args = oldArgs
+		flag.CommandLine = oldCommandLine
+	}()
+
+	// Try to read a directory as config file
+	tmpdir, err := os.MkdirTemp("", "config-dir-")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpdir)
+
+	// Reset flag.CommandLine
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	os.Args = []string{"cmd", "-config", tmpdir}
+
+	// Should return error from config loading
+	err = run()
+	if err == nil {
+		t.Error("run() should return error when config cannot be read")
+	}
+}
+
+func TestRunFunctionSuccess(t *testing.T) {
+	// Save original state
+	oldArgs := os.Args
+	oldCommandLine := flag.CommandLine
+	defer func() {
+		os.Args = oldArgs
+		flag.CommandLine = oldCommandLine
+	}()
+
+	// Create valid config file
+	content := `server:
+  port: 8889
+  read_timeout: 5s
+  write_timeout: 5s
+  idle_timeout: 30s
+  shutdown_timeout: 1s
+`
+	tmpfile, err := os.CreateTemp("", "config-*.yml")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("failed to write temp file: %v", err)
+	}
+	tmpfile.Close()
+
+	// Reset flag.CommandLine
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	os.Args = []string{"cmd", "-config", tmpfile.Name()}
+
+	// Run in background
+	done := make(chan error, 1)
+	go func() {
+		done <- run()
+	}()
+
+	// Give server time to start
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify server is running
+	resp, err := http.Get("http://localhost:8889/")
+	if err != nil {
+		t.Fatalf("server not responding: %v", err)
+	}
+	resp.Body.Close()
+
+	// Send signal to shut down
+	proc, _ := os.FindProcess(os.Getpid())
+	proc.Signal(syscall.SIGTERM)
+
+	// Wait for shutdown
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("run() returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Error("timeout waiting for shutdown")
 	}
 }

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"flag"
 	"os"
 	"testing"
 	"time"
@@ -141,5 +142,79 @@ func TestLoadConfigWithOverrides(t *testing.T) {
 	}
 	if cfg.Server.ShutdownTimeout != 60*time.Second {
 		t.Errorf("expected shutdown timeout 60s (from options), got %v", cfg.Server.ShutdownTimeout)
+	}
+}
+
+func TestLoadConfigWithReadError(t *testing.T) {
+	// Try to read a directory as a file (causes read error)
+	tmpdir, err := os.MkdirTemp("", "config-dir-")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpdir)
+
+	opts := &Options{
+		ConfigFile: tmpdir, // Directory, not file
+	}
+
+	_, err = Load(opts)
+	if err == nil {
+		t.Error("Load() should fail when trying to read a directory")
+	}
+}
+
+func TestParseFlags(t *testing.T) {
+	// Save original state
+	oldArgs := os.Args
+	oldCommandLine := flag.CommandLine
+	defer func() {
+		os.Args = oldArgs
+		flag.CommandLine = oldCommandLine
+	}()
+
+	// Reset flag.CommandLine for this test
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+
+	// Test with flags
+	os.Args = []string{"cmd", "-config", "test.yml", "-port", "9090", "-shutdown-timeout", "60s"}
+
+	opts := ParseFlags()
+
+	if opts.ConfigFile != "test.yml" {
+		t.Errorf("expected config file 'test.yml', got '%s'", opts.ConfigFile)
+	}
+	if opts.Port != 9090 {
+		t.Errorf("expected port 9090, got %d", opts.Port)
+	}
+	if opts.ShutdownTimeout != 60*time.Second {
+		t.Errorf("expected timeout 60s, got %v", opts.ShutdownTimeout)
+	}
+}
+
+func TestParseFlagsDefaults(t *testing.T) {
+	// Save original state
+	oldArgs := os.Args
+	oldCommandLine := flag.CommandLine
+	defer func() {
+		os.Args = oldArgs
+		flag.CommandLine = oldCommandLine
+	}()
+
+	// Reset flag.CommandLine
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+
+	// Test with no flags (defaults)
+	os.Args = []string{"cmd"}
+
+	opts := ParseFlags()
+
+	if opts.ConfigFile != "config.yml" {
+		t.Errorf("expected default config file 'config.yml', got '%s'", opts.ConfigFile)
+	}
+	if opts.Port != 0 {
+		t.Errorf("expected default port 0, got %d", opts.Port)
+	}
+	if opts.ShutdownTimeout != 0 {
+		t.Errorf("expected default timeout 0, got %v", opts.ShutdownTimeout)
 	}
 }
