@@ -1,0 +1,145 @@
+package config
+
+import (
+	"os"
+	"testing"
+	"time"
+)
+
+func TestDefaultConfig(t *testing.T) {
+	cfg := DefaultConfig()
+
+	if cfg.Server.Port != 8080 {
+		t.Errorf("expected default port 8080, got %d", cfg.Server.Port)
+	}
+	if cfg.Server.ReadTimeout != 15*time.Second {
+		t.Errorf("expected read timeout 15s, got %v", cfg.Server.ReadTimeout)
+	}
+	if cfg.Server.WriteTimeout != 15*time.Second {
+		t.Errorf("expected write timeout 15s, got %v", cfg.Server.WriteTimeout)
+	}
+	if cfg.Server.IdleTimeout != 60*time.Second {
+		t.Errorf("expected idle timeout 60s, got %v", cfg.Server.IdleTimeout)
+	}
+	if cfg.Server.ShutdownTimeout != 30*time.Second {
+		t.Errorf("expected shutdown timeout 30s, got %v", cfg.Server.ShutdownTimeout)
+	}
+}
+
+func TestLoadConfigFromFile(t *testing.T) {
+	// Create a temporary config file
+	content := `server:
+  port: 9090
+  read_timeout: 20s
+  write_timeout: 20s
+  idle_timeout: 120s
+  shutdown_timeout: 45s
+`
+	tmpfile, err := os.CreateTemp("", "config-*.yml")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("failed to write temp file: %v", err)
+	}
+	tmpfile.Close()
+
+	// Create options pointing to temp file
+	opts := &Options{
+		ConfigFile: tmpfile.Name(),
+	}
+
+	cfg, err := Load(opts)
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	if cfg.Server.Port != 9090 {
+		t.Errorf("expected port 9090, got %d", cfg.Server.Port)
+	}
+	if cfg.Server.ShutdownTimeout != 45*time.Second {
+		t.Errorf("expected shutdown timeout 45s, got %v", cfg.Server.ShutdownTimeout)
+	}
+}
+
+func TestLoadConfigWithMissingFile(t *testing.T) {
+	opts := &Options{
+		ConfigFile: "nonexistent.yml",
+	}
+
+	cfg, err := Load(opts)
+	if err != nil {
+		t.Fatalf("Load() should not fail with missing file: %v", err)
+	}
+
+	// Should fall back to defaults
+	if cfg.Server.Port != 8080 {
+		t.Errorf("expected default port 8080, got %d", cfg.Server.Port)
+	}
+}
+
+func TestLoadConfigWithInvalidYAML(t *testing.T) {
+	// Create a temporary invalid config file
+	content := `server:
+  port: not-a-number
+`
+	tmpfile, err := os.CreateTemp("", "config-*.yml")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("failed to write temp file: %v", err)
+	}
+	tmpfile.Close()
+
+	opts := &Options{
+		ConfigFile: tmpfile.Name(),
+	}
+
+	_, err = Load(opts)
+	if err == nil {
+		t.Error("Load() should fail with invalid YAML")
+	}
+}
+
+func TestLoadConfigWithOverrides(t *testing.T) {
+	// Create a config file with some values
+	content := `server:
+  port: 9090
+  shutdown_timeout: 45s
+`
+	tmpfile, err := os.CreateTemp("", "config-*.yml")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("failed to write temp file: %v", err)
+	}
+	tmpfile.Close()
+
+	// Override with options
+	opts := &Options{
+		ConfigFile:      tmpfile.Name(),
+		Port:            3000,
+		ShutdownTimeout: 60 * time.Second,
+	}
+
+	cfg, err := Load(opts)
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	// Options should override file values
+	if cfg.Server.Port != 3000 {
+		t.Errorf("expected port 3000 (from options), got %d", cfg.Server.Port)
+	}
+	if cfg.Server.ShutdownTimeout != 60*time.Second {
+		t.Errorf("expected shutdown timeout 60s (from options), got %v", cfg.Server.ShutdownTimeout)
+	}
+}

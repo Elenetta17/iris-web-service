@@ -1,4 +1,3 @@
-// internal/config/config.go
 package config
 
 import (
@@ -22,20 +21,31 @@ type ServerConfig struct {
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
 }
 
-// Load loads configuration from file and command-line flags
-// Command-line flags override file values
-func Load() (*Config, error) {
-	// Define flags
-	configFile := flag.String("config", "config.yml", "path to config file")
-	port := flag.Int("port", 0, "server port (overrides config file)")
-	shutdownTimeout := flag.Duration("shutdown-timeout", 0, "shutdown timeout (overrides config file)")
-	flag.Parse()
+// Options holds configuration options that can override file values
+type Options struct {
+	ConfigFile      string
+	Port            int
+	ShutdownTimeout time.Duration
+}
 
+// ParseFlags parses command-line flags and returns Options
+func ParseFlags() *Options {
+	opts := &Options{}
+	flag.StringVar(&opts.ConfigFile, "config", "config.yml", "path to config file")
+	flag.IntVar(&opts.Port, "port", 0, "server port (overrides config file)")
+	flag.DurationVar(&opts.ShutdownTimeout, "shutdown-timeout", 0, "shutdown timeout (overrides config file)")
+	flag.Parse()
+	return opts
+}
+
+// Load loads configuration from file with given options
+func Load(opts *Options) (*Config, error) {
 	// Start with defaults
 	cfg := DefaultConfig()
 
-	if *configFile != "" {
-		data, err := os.ReadFile(*configFile)
+	// Load from file if specified
+	if opts.ConfigFile != "" {
+		data, err := os.ReadFile(opts.ConfigFile)
 		if err != nil {
 			if !os.IsNotExist(err) {
 				return nil, fmt.Errorf("reading config file: %w", err)
@@ -48,12 +58,12 @@ func Load() (*Config, error) {
 		}
 	}
 
-	// Command-line flags override file values
-	if *port != 0 {
-		cfg.Server.Port = *port
+	// Apply option overrides
+	if opts.Port != 0 {
+		cfg.Server.Port = opts.Port
 	}
-	if *shutdownTimeout != 0 {
-		cfg.Server.ShutdownTimeout = *shutdownTimeout
+	if opts.ShutdownTimeout != 0 {
+		cfg.Server.ShutdownTimeout = opts.ShutdownTimeout
 	}
 
 	return cfg, nil

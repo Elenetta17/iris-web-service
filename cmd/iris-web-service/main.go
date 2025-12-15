@@ -14,8 +14,11 @@ import (
 )
 
 func main() {
+	// Parse command-line flags
+	opts := config.ParseFlags()
+
 	// Load configuration
-	cfg, err := config.Load()
+	cfg, err := config.Load(opts)
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
