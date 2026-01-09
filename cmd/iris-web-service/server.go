@@ -12,6 +12,8 @@ import (
 
 	"github.com/Elenetta17/iris-web-service/internal/config"
 	"github.com/Elenetta17/iris-web-service/internal/httpapi"
+	"github.com/Elenetta17/iris-web-service/internal/metrics"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Run starts the server with the given configuration
@@ -26,6 +28,9 @@ func RunWithSignal(cfg *config.Config, quit chan os.Signal) error {
 	mux.HandleFunc("GET /{$}", httpapi.FormPage)
 	mux.HandleFunc("POST /hello", httpapi.HelloHandler)
 
+	// Add metrics endpoint
+	mux.Handle("GET /metrics", promhttp.Handler())
+
 	// Add a slow endpoint for testing shutdown behavior
 	mux.HandleFunc("GET /slow", func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(10 * time.Second)
@@ -35,7 +40,7 @@ func RunWithSignal(cfg *config.Config, quit chan os.Signal) error {
 
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
-		Handler:      mux,
+		Handler:      metrics.Middleware(mux), // Wrap mux with metrics middleware
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  cfg.Server.IdleTimeout,
