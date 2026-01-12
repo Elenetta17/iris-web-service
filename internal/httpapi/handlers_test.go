@@ -28,6 +28,8 @@ func runHelloRequest(t *testing.T, method string, form url.Values, contentType s
 }
 
 func TestFormPage(t *testing.T) {
+	t.Parallel()
+
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rr := httptest.NewRecorder()
 	http.HandlerFunc(FormPage).ServeHTTP(rr, req)
@@ -58,6 +60,8 @@ func TestFormPage(t *testing.T) {
 }
 
 func TestHelloHandler_Success(t *testing.T) {
+	t.Parallel()
+
 	form := url.Values{"name": {"Alice"}}
 	rr := runHelloRequest(t, http.MethodPost, form, "application/x-www-form-urlencoded")
 
@@ -78,6 +82,8 @@ func TestHelloHandler_Success(t *testing.T) {
 }
 
 func TestHelloHandler_DefaultWorld(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		form url.Values
@@ -88,6 +94,8 @@ func TestHelloHandler_DefaultWorld(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			rr := runHelloRequest(t, http.MethodPost, tc.form, "application/x-www-form-urlencoded")
 
 			if got, want := rr.Code, http.StatusOK; got != want {
@@ -104,6 +112,8 @@ func TestHelloHandler_DefaultWorld(t *testing.T) {
 }
 
 func TestHelloHandler_MethodNotAllowed(t *testing.T) {
+	t.Parallel()
+
 	for _, method := range []string{
 		http.MethodGet,
 		http.MethodPut,
@@ -111,6 +121,8 @@ func TestHelloHandler_MethodNotAllowed(t *testing.T) {
 		http.MethodPatch,
 	} {
 		t.Run(method, func(t *testing.T) {
+			t.Parallel()
+
 			rr := runHelloRequest(t, method, nil, "")
 
 			if got, want := rr.Code, http.StatusMethodNotAllowed; got != want {
@@ -125,6 +137,8 @@ func TestHelloHandler_MethodNotAllowed(t *testing.T) {
 }
 
 func TestHelloHandler_InvalidForm(t *testing.T) {
+	t.Parallel()
+
 	req := httptest.NewRequest(http.MethodPost, "/hello", strings.NewReader("invalid"))
 	req.Header.Set("Content-Type", "multipart/form-data; boundary=")
 
@@ -141,6 +155,8 @@ func TestHelloHandler_InvalidForm(t *testing.T) {
 }
 
 func TestHelloHandler_SpecialCharacters(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    string
@@ -153,6 +169,8 @@ func TestHelloHandler_SpecialCharacters(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			form := url.Values{"name": {tc.input}}
 			rr := runHelloRequest(t, http.MethodPost, form, "application/x-www-form-urlencoded")
 
@@ -167,6 +185,8 @@ func TestHelloHandler_SpecialCharacters(t *testing.T) {
 
 // New test: XSS protection
 func TestHelloHandler_XSSProtection(t *testing.T) {
+	t.Parallel()
+
 	form := url.Values{"name": {"<script>alert('xss')</script>"}}
 	rr := runHelloRequest(t, http.MethodPost, form, "application/x-www-form-urlencoded")
 

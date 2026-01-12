@@ -8,6 +8,8 @@ import (
 )
 
 func TestDefaultConfig(t *testing.T) {
+	t.Parallel()
+
 	cfg := DefaultConfig()
 
 	if cfg.Server.Port != 8080 {
@@ -28,6 +30,7 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestLoadConfigFromFile(t *testing.T) {
+	t.Parallel()
 	// Create a temporary config file
 	content := `server:
   port: 9090
@@ -66,6 +69,8 @@ func TestLoadConfigFromFile(t *testing.T) {
 }
 
 func TestLoadConfigWithMissingFile(t *testing.T) {
+	t.Parallel()
+
 	opts := &Options{
 		ConfigFile: "nonexistent.yml",
 	}
@@ -82,6 +87,8 @@ func TestLoadConfigWithMissingFile(t *testing.T) {
 }
 
 func TestLoadConfigWithInvalidYAML(t *testing.T) {
+	t.Parallel()
+
 	// Create a temporary invalid config file
 	content := `server:
   port: not-a-number
@@ -108,6 +115,7 @@ func TestLoadConfigWithInvalidYAML(t *testing.T) {
 }
 
 func TestLoadConfigWithOverrides(t *testing.T) {
+	t.Parallel()
 	// Create a config file with some values
 	content := `server:
   port: 9090
@@ -146,6 +154,7 @@ func TestLoadConfigWithOverrides(t *testing.T) {
 }
 
 func TestLoadConfigWithReadError(t *testing.T) {
+	t.Parallel()
 	// Try to read a directory as a file (causes read error)
 	tmpdir, err := os.MkdirTemp("", "config-dir-")
 	if err != nil {

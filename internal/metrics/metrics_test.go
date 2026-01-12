@@ -9,6 +9,8 @@ import (
 )
 
 func TestMiddleware(t *testing.T) {
+	t.Parallel()
+
 	// Reset the counter before testing
 	HttpRequestsTotal.Reset()
 

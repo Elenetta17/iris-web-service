@@ -65,6 +65,8 @@ func TestRunFunction(t *testing.T) {
 }
 
 func TestRunServerStartupError(t *testing.T) {
+	t.Parallel()
+
 	cfg := &config.Config{
 		Server: config.ServerConfig{
 			Port:            8882,
@@ -120,6 +122,8 @@ func TestRunServerStartupError(t *testing.T) {
 }
 
 func TestRunShutdownTimeout(t *testing.T) {
+	t.Parallel()
+
 	cfg := &config.Config{
 		Server: config.ServerConfig{
 			Port:            8886,
